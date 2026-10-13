@@ -30,4 +30,13 @@ describe('ConsultarOrcamentoPublicoUseCase', () => {
     await expect(useCase.execute(42, 'errado')).rejects.toBeInstanceOf(RecursoNaoEncontradoError);
     await expect(useCase.execute(99, token)).rejects.toBeInstanceOf(RecursoNaoEncontradoError);
   });
+
+  it.each([0, -1, 2_147_483_648, 99_999_999_999])(
+    "numero de OS %p fora do INT4 responde 404 sem consultar o repositório",
+    async (numeroOs) => {
+      const busca = jest.spyOn(c.orcamentos, "buscarPorNumeroOs");
+      await expect(useCase.execute(numeroOs, token)).rejects.toBeInstanceOf(RecursoNaoEncontradoError);
+      expect(busca).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -66,6 +66,10 @@ describe('Orçamento (e2e)', () => {
     expect(JSON.stringify(consulta.body)).not.toContain('maria@example.com');
     await http().get(`${publico}?token=errado`).expect(404);
     await http().get(publico).expect(400);
+    // Fora do INT4 do Postgres: 404 (não revela quais OS existem), nunca 500.
+    const foraDoInt4 = "/api/billing/publico/orcamentos/99999999999";
+    await http().get(`${foraDoInt4}?token=${t}`).expect(404);
+    await http().post(`${foraDoInt4}/decisao`).send({ token: t, decisao: "APROVADA" }).expect(404);
 
     const decisao = await http()
       .post(`${publico}/decisao`)
