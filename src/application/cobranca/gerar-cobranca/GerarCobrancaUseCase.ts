@@ -101,13 +101,23 @@ export class GerarCobrancaUseCase {
     return true;
   }
 
-  /** Comando repetido: devolve o estado atual (link pendente ou pagamento já confirmado). */
+  /**
+   * Comando repetido: devolve o estado atual (link pendente ou pagamento já confirmado). A
+   * cobrança é relida na transação, pois o webhook pode ter mudado o status desde a leitura.
+   */
   private async reemitir(existente: Cobranca, input: ContextoMensagem): Promise<void> {
     if (!(await this.mensagensProcessadas.registrar(input.messageId))) return;
-    await this.outbox.publicar(
-      existente.status === StatusCobranca.PAGA
-        ? eventoPagamentoConfirmado(existente, input.messageId)
-        : eventoCobrancaGerada(existente, input.messageId),
-    );
+    const atual = ensureFound(await this.cobrancas.buscarPorId(existente.id.toValue()), 'Cobrança');
+    if (atual.status === StatusCobranca.PAGA) {
+      await this.outbox.publicar(eventoPagamentoConfirmado(atual, input.messageId));
+    } else if (atual.status === StatusCobranca.PENDENTE) {
+      await this.outbox.publicar(eventoCobrancaGerada(atual, input.messageId));
+    } else {
+      this.logger.warn({
+        msg: 'Cobrança recusada durante a reemissão; nada publicado',
+        osId: atual.osId,
+        cobrancaId: atual.id.toValue(),
+      });
+    }
   }
 }

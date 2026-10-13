@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common';
+
 import { Cenario, criarCenario, OS, payloadOrcamento } from '../../../../test/fakes/cenario';
 import { Cobranca, StatusCobranca } from '../../../domain/cobranca/entities/Cobranca';
 import { Orcamento } from '../../../domain/orcamento/entities/Orcamento';
@@ -84,6 +86,42 @@ describe('GerarCobrancaUseCase', () => {
       type: BILLING_EVENTS.PAGAMENTO_CONFIRMADO,
       payload: { mpPaymentId: 'mp-1' },
     });
+  });
+
+  it('pendente lida fora da transação que já virou paga reemite pagamento-confirmado', async () => {
+    const pendente = await gravarCobranca();
+    jest.spyOn(c.cobrancas, 'buscarPendentePorOs').mockImplementationOnce(async () => {
+      const lida = (await c.cobrancas.buscarPorId(pendente.id.toValue()))!;
+      const paga = (await c.cobrancas.buscarPorId(pendente.id.toValue()))!;
+      paga.confirmar('mp-1');
+      await c.cobrancas.salvar(paga);
+      return lida;
+    });
+    await useCase.execute(comando());
+    expect(c.outbox.mensagens).toHaveLength(1);
+    expect(c.outbox.mensagens[0]).toMatchObject({
+      type: BILLING_EVENTS.PAGAMENTO_CONFIRMADO,
+      payload: { cobrancaId: pendente.id.toValue(), mpPaymentId: 'mp-1' },
+    });
+  });
+
+  it('pendente lida fora da transação que já virou recusada não publica e registra a mensagem', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const pendente = await gravarCobranca();
+    jest.spyOn(c.cobrancas, 'buscarPendentePorOs').mockImplementationOnce(async () => {
+      const lida = (await c.cobrancas.buscarPorId(pendente.id.toValue()))!;
+      const recusada = (await c.cobrancas.buscarPorId(pendente.id.toValue()))!;
+      recusada.recusar('mp-1');
+      await c.cobrancas.salvar(recusada);
+      return lida;
+    });
+    await useCase.execute(comando());
+    expect(c.outbox.mensagens).toHaveLength(0);
+    expect(c.processadas.ids.has('cob-1')).toBe(true);
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ osId: OS, cobrancaId: pendente.id.toValue() }),
+    );
+    warn.mockRestore();
   });
 
   it('depois de uma recusa, gera nova cobrança (novo link)', async () => {
