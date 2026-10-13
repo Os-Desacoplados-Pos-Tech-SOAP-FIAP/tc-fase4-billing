@@ -18,13 +18,13 @@ describe('AllExceptionsFilter', () => {
 
   it('DomainError vira 422 com code', () => {
     const { host, response } = criarHost();
-    filtro.catch(new DomainError('Estoque insuficiente', 'ESTOQUE_INSUFICIENTE'), host);
+    filtro.catch(new DomainError('Orçamento vencido', 'ORCAMENTO_VENCIDO'), host);
     expect(response.status).toHaveBeenCalledWith(422);
     expect(response.json).toHaveBeenCalledWith({
       statusCode: 422,
       error: 'Unprocessable Entity',
-      code: 'ESTOQUE_INSUFICIENTE',
-      message: 'Estoque insuficiente',
+      code: 'ORCAMENTO_VENCIDO',
+      message: 'Orçamento vencido',
     });
   });
 
