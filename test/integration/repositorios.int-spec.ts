@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 import { ConcorrenciaError } from '../../src/application/errors';
 import { Cobranca, StatusCobranca } from '../../src/domain/cobranca/entities/Cobranca';
 import { Orcamento, StatusOrcamento } from '../../src/domain/orcamento/entities/Orcamento';
@@ -13,6 +15,9 @@ import { conectar, limparBanco } from '../helpers/database';
 const OS_2 = '7f2b2a8e-1d7c-4a35-9c1e-0a4f3b2c1d02';
 const OS_3 = '7f2b2a8e-1d7c-4a35-9c1e-0a4f3b2c1d03';
 const DECISAO = new Date('2026-10-20T10:00:00Z');
+
+/** Violação de unicidade do Postgres traduzida pelo Prisma. */
+const violacaoDeUnicidade = expect.objectContaining({ code: 'P2002' });
 
 describe('Repositórios Prisma (integração)', () => {
   let prisma: PrismaService;
@@ -70,6 +75,16 @@ describe('Repositórios Prisma (integração)', () => {
       expect(lido.decididoEm).toEqual(DECISAO);
     });
 
+    it('não permite dois orçamentos para a mesma OS', async () => {
+      await orcamentos.salvar(novoOrcamento(OS, 1));
+      await expect(orcamentos.salvar(novoOrcamento(OS, 2))).rejects.toEqual(violacaoDeUnicidade);
+    });
+
+    it('não permite dois orçamentos com o mesmo número de OS', async () => {
+      await orcamentos.salvar(novoOrcamento(OS, 1));
+      await expect(orcamentos.salvar(novoOrcamento(OS_2, 1))).rejects.toEqual(violacaoDeUnicidade);
+    });
+
     it('lista só ENVIADOS vencidos, mais antigos primeiro, respeitando o limite', async () => {
       await orcamentos.salvar(novoOrcamento(OS, 1, '2026-10-20T09:00:00Z'));
       await orcamentos.salvar(novoOrcamento(OS_2, 2, '2026-10-20T08:00:00Z'));
@@ -104,7 +119,9 @@ describe('Repositórios Prisma (integração)', () => {
 
     it('não permite duas cobranças PENDENTES para a mesma OS', async () => {
       await cobrancas.salvar(novaCobranca());
-      await expect(cobrancas.salvar(novaCobranca())).rejects.toThrow();
+      const duplicada = cobrancas.salvar(novaCobranca());
+      await expect(duplicada).rejects.toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
+      await expect(duplicada).rejects.toEqual(violacaoDeUnicidade);
       await expect(cobrancas.salvar(novaCobranca(OS_2))).resolves.toBeUndefined();
     });
 

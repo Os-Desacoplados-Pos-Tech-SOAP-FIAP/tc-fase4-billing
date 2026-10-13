@@ -47,7 +47,11 @@ export class MercadoPagoGateway implements IPaymentGateway {
   }
 
   async consultarPagamento(id: string): Promise<PagamentoNoGateway> {
-    const corpo = await this.chamar(`/v1/payments/${encodeURIComponent(id)}`, { method: 'GET' });
+    const corpo = await this.chamar(
+      `/v1/payments/${encodeURIComponent(id)}`,
+      { method: 'GET' },
+      'Pagamento',
+    );
     return {
       id: String(corpo.id),
       status: String(corpo.status),
@@ -58,7 +62,8 @@ export class MercadoPagoGateway implements IPaymentGateway {
     };
   }
 
-  private async chamar(caminho: string, init: RequestInit): Promise<Json> {
+  /** `recurso404`: quando informado, um 404 vira RecursoNaoEncontradoError com esse nome. */
+  private async chamar(caminho: string, init: RequestInit, recurso404?: string): Promise<Json> {
     const resposta = await this.fetcher(`${this.config.apiUrl}${caminho}`, {
       ...init,
       headers: {
@@ -68,7 +73,7 @@ export class MercadoPagoGateway implements IPaymentGateway {
       },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (resposta.status === 404) throw new RecursoNaoEncontradoError('Pagamento');
+    if (resposta.status === 404 && recurso404) throw new RecursoNaoEncontradoError(recurso404);
     if (!resposta.ok) {
       throw new Error(`Mercado Pago respondeu ${resposta.status} em ${caminho}`);
     }

@@ -86,4 +86,16 @@ describe('MercadoPagoGateway', () => {
     const chamada = new MercadoPagoGateway(config, fetcher).consultarPagamento('999');
     await expect(chamada).rejects.toBeInstanceOf(RecursoNaoEncontradoError);
   });
+
+  it('404 na criação da preferência é erro genérico, não recurso inexistente', async () => {
+    const fetcher = jest.fn().mockResolvedValue(resposta({ message: 'not found' }, 404));
+    const chamada = new MercadoPagoGateway(config, fetcher).criarPreferencia({
+      cobrancaId: 'c-1',
+      osId: 'os-1',
+      numeroOs: 42,
+      valor: 10,
+    });
+    await expect(chamada).rejects.toThrow('Mercado Pago respondeu 404 em /checkout/preferences');
+    await expect(chamada).rejects.not.toBeInstanceOf(RecursoNaoEncontradoError);
+  });
 });

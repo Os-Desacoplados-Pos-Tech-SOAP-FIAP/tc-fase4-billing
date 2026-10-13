@@ -55,7 +55,7 @@ export class PrismaCobrancaRepository implements ICobrancaRepository {
   async listarPorOs(osId: string): Promise<Cobranca[]> {
     const rows = await this.db.client.cobranca.findMany({
       where: { osId },
-      orderBy: { criadoEm: 'asc' },
+      orderBy: [{ criadoEm: 'asc' }, { id: 'asc' }],
     });
     return rows.map(paraDominio);
   }

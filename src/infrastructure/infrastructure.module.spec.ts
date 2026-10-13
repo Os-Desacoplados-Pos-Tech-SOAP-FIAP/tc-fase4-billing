@@ -29,6 +29,13 @@ describe('InfrastructureModule', () => {
     expect(modulo.get(INJECTION_TOKENS.PAYMENT_GATEWAY)).toBeInstanceOf(FakePaymentGateway);
   });
 
+  it('com o provedor fake, gateway e simulador são a mesma instância', async () => {
+    const modulo = await compilar();
+    expect(modulo.get(INJECTION_TOKENS.PAYMENT_GATEWAY)).toBe(
+      modulo.get(INJECTION_TOKENS.SIMULADOR_PAGAMENTO),
+    );
+  });
+
   it('usa o Mercado Pago quando PAYMENT_PROVIDER=mercadopago', async () => {
     const anterior = process.env.PAYMENT_PROVIDER;
     process.env.PAYMENT_PROVIDER = 'mercadopago';
@@ -36,7 +43,8 @@ describe('InfrastructureModule', () => {
       const modulo = await compilar();
       expect(modulo.get(INJECTION_TOKENS.PAYMENT_GATEWAY)).toBeInstanceOf(MercadoPagoGateway);
     } finally {
-      process.env.PAYMENT_PROVIDER = anterior;
+      if (anterior === undefined) delete process.env.PAYMENT_PROVIDER;
+      else process.env.PAYMENT_PROVIDER = anterior;
     }
   });
 });
