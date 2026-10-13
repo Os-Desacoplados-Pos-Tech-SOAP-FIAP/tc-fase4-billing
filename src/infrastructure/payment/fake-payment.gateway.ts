@@ -26,17 +26,17 @@ export class FakePaymentGateway implements IPaymentGateway, ISimuladorPagamento 
     private readonly config: ConfigBilling,
   ) {}
 
-  async criarPreferencia(nova: NovaPreferencia): Promise<Preferencia> {
-    return {
+  criarPreferencia(nova: NovaPreferencia): Promise<Preferencia> {
+    return Promise.resolve({
       preferenceId: `fake-pref-${nova.cobrancaId}`,
       initPoint: `${this.config.urlPublica}/api/billing/dev/pagamentos/${nova.osId}/simular`,
-    };
+    });
   }
 
-  async consultarPagamento(id: string): Promise<PagamentoNoGateway> {
+  consultarPagamento(id: string): Promise<PagamentoNoGateway> {
     const pagamento = this.pagamentos.get(id);
-    if (!pagamento) throw new RecursoNaoEncontradoError('Pagamento');
-    return pagamento;
+    if (!pagamento) return Promise.reject(new RecursoNaoEncontradoError('Pagamento'));
+    return Promise.resolve(pagamento);
   }
 
   registrarPagamento(dados: { referenciaExterna: string; valor: number; aprovado: boolean }): string {

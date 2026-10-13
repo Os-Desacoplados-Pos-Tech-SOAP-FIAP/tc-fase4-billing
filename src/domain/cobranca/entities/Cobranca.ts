@@ -34,7 +34,7 @@ export class Cobranca extends Entity<CobrancaProps> {
 
   /** O id vem de fora porque é enviado ao gateway antes de a cobrança ser gravada. */
   public static criar(nova: NovaCobranca, id: UniqueID): Cobranca {
-    if (!(nova.valor > 0)) {
+    if (Number.isNaN(nova.valor) || nova.valor <= 0) {
       throw new DomainError('Valor da cobrança deve ser positivo', 'COBRANCA_VALOR_INVALIDO');
     }
     return new Cobranca(

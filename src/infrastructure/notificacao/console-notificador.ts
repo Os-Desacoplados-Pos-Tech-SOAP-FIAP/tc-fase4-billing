@@ -10,12 +10,13 @@ import { Email, INotificador } from '../../application/ports/notificador';
 export class ConsoleNotificador implements INotificador {
   private readonly logger = new Logger('Email');
 
-  async enviar(email: Email): Promise<void> {
+  enviar(email: Email): Promise<void> {
     this.logger.log({
       msg: 'E-mail enviado (simulado)',
       para: email.para,
       assunto: email.assunto,
       corpo: email.corpo,
     });
+    return Promise.resolve();
   }
 }
