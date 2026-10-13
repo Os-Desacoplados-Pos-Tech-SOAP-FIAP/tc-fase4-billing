@@ -55,8 +55,18 @@ describe('ExpirarOrcamentosUseCase', () => {
     expect(c.outbox.mensagens.map((m) => m.correlationId)).toEqual([OS_2]);
   });
 
-  it('erro de infraestrutura propaga', async () => {
-    jest.spyOn(c.orcamentos, 'salvar').mockRejectedValueOnce(new Error('banco fora'));
+  it('erro de infraestrutura não bloqueia os outros orçamentos e é relançado no fim', async () => {
+    const loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const salvar = c.orcamentos.salvar.bind(c.orcamentos);
+    jest
+      .spyOn(c.orcamentos, 'salvar')
+      .mockRejectedValueOnce(new Error('banco fora'))
+      .mockImplementation(salvar);
     await expect(useCase.execute()).rejects.toThrow('banco fora');
+    expect((await c.orcamentos.buscarPorOs(OS_2))!.status).toBe(StatusOrcamento.EXPIRADO);
+    expect(c.outbox.mensagens.map((m) => m.correlationId)).toEqual([OS_2]);
+    expect(loggerError).toHaveBeenCalledWith(
+      expect.objectContaining({ osId: OS_1, erro: 'Error: banco fora' }),
+    );
   });
 });

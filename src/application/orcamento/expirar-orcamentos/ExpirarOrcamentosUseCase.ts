@@ -37,9 +37,20 @@ export class ExpirarOrcamentosUseCase {
     const agora = this.relogio.agora();
     const vencidos = await this.orcamentos.listarVencidos(agora, LOTE);
     let expirados = 0;
+    const erros: unknown[] = [];
     for (const orcamento of vencidos) {
-      if (await this.expirar(orcamento, agora)) expirados++;
+      try {
+        if (await this.expirar(orcamento, agora)) expirados++;
+      } catch (erro) {
+        this.logger.error({
+          msg: 'Falha ao expirar orçamento; seguindo para os próximos',
+          osId: orcamento.osId,
+          erro: erro instanceof Error ? `${erro.name}: ${erro.message}` : String(erro),
+        });
+        erros.push(erro);
+      }
     }
+    if (erros.length > 0) throw erros[0];
     return expirados;
   }
 
