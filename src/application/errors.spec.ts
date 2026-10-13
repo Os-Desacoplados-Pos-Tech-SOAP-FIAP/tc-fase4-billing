@@ -1,5 +1,5 @@
 import { DomainError } from '../domain/shared/DomainError';
-import { ConflitoError, RecursoNaoEncontradoError } from './errors';
+import { ConcorrenciaError, ConflitoError, RecursoNaoEncontradoError } from './errors';
 
 describe('erros de aplicação', () => {
   it('RecursoNaoEncontradoError monta a mensagem a partir da entidade', () => {
@@ -21,5 +21,12 @@ describe('erros de aplicação', () => {
 
   it('ConflitoError aceita code específico', () => {
     expect(new ConflitoError('Duplicado', 'CODIGO_DUPLICADO').code).toBe('CODIGO_DUPLICADO');
+  });
+
+  it('ConcorrenciaError é um ConflitoError com code CONCORRENCIA', () => {
+    const erro = new ConcorrenciaError('Orçamento');
+    expect(erro).toBeInstanceOf(ConflitoError);
+    expect(erro.code).toBe('CONCORRENCIA');
+    expect(erro.message).toContain('Orçamento');
   });
 });

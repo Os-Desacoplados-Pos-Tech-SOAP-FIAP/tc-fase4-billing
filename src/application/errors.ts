@@ -24,3 +24,12 @@ export class ConflitoError extends Error {
     Object.setPrototypeOf(this, ConflitoError.prototype);
   }
 }
+
+/** Versão otimista divergente: outra operação gravou antes. HTTP → 409; fila → retentativa. */
+export class ConcorrenciaError extends ConflitoError {
+  constructor(entidade: string) {
+    super(`${entidade} foi alterado(a) por outra operação; tente novamente`, 'CONCORRENCIA');
+    this.name = 'ConcorrenciaError';
+    Object.setPrototypeOf(this, ConcorrenciaError.prototype);
+  }
+}
