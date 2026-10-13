@@ -47,6 +47,25 @@ describe('CancelarOrcamentoUseCase', () => {
     expect(c.notificador.emails[0].corpo).toContain('sem estoque');
   });
 
+  it('cancela orçamento ainda ENVIADO, publica e avisa o cliente', async () => {
+    await gravarOrcamento();
+    await useCase.execute(comando());
+    expect((await c.orcamentos.buscarPorOs(OS))!.status).toBe(StatusOrcamento.CANCELADO);
+    expect(c.outbox.tipos()).toEqual([BILLING_EVENTS.ORCAMENTO_CANCELADO]);
+    expect(c.notificador.emails).toHaveLength(1);
+  });
+
+  it('com outro messageId sobre orçamento já cancelado, publica de novo sem novo e-mail', async () => {
+    await gravarOrcamento((o) => o.cancelar());
+    await useCase.execute(comando('cmp-2'));
+    expect(c.outbox.mensagens).toHaveLength(1);
+    expect(c.outbox.mensagens[0]).toMatchObject({
+      type: BILLING_EVENTS.ORCAMENTO_CANCELADO,
+      causationId: 'cmp-2',
+    });
+    expect(c.notificador.emails).toHaveLength(0);
+  });
+
   it('confirma mesmo sem orçamento (compensação sempre responde)', async () => {
     await useCase.execute(comando());
     expect(c.outbox.tipos()).toEqual([BILLING_EVENTS.ORCAMENTO_CANCELADO]);

@@ -2,7 +2,7 @@ import { Cenario, criarCenario, OS, payloadOrcamento } from '../../../../test/fa
 import { Orcamento, StatusOrcamento } from '../../../domain/orcamento/entities/Orcamento';
 import { DomainError } from '../../../domain/shared/DomainError';
 import { BILLING_EVENTS } from '../../billing-messages';
-import { RecursoNaoEncontradoError } from '../../errors';
+import { ConcorrenciaError, RecursoNaoEncontradoError } from '../../errors';
 import { ConsultarOrcamentoPublicoUseCase } from '../consultar-orcamento-publico/ConsultarOrcamentoPublicoUseCase';
 import { gerarTokenAprovacao } from '../token-aprovacao';
 import { DecidirOrcamentoUseCase } from './DecidirOrcamentoUseCase';
@@ -58,9 +58,17 @@ describe('DecidirOrcamentoUseCase', () => {
 
   it('decisão depois da validade é recusada', async () => {
     c.relogio.avancarHoras(49);
+    const rejeitado = useCase.execute({ numeroOs: 42, token, decisao: 'APROVADA' });
+    await expect(rejeitado).rejects.toBeInstanceOf(DomainError);
+    await expect(rejeitado).rejects.toMatchObject({ code: 'ORCAMENTO_VENCIDO' });
+  });
+
+  it('conflito de versão ao salvar propaga ConcorrenciaError e nada é publicado', async () => {
+    jest.spyOn(c.orcamentos, 'salvar').mockRejectedValueOnce(new ConcorrenciaError('Orçamento'));
     await expect(
       useCase.execute({ numeroOs: 42, token, decisao: 'APROVADA' }),
-    ).rejects.toBeInstanceOf(DomainError);
+    ).rejects.toBeInstanceOf(ConcorrenciaError);
+    expect(c.outbox.mensagens).toHaveLength(0);
   });
 
   it('token errado dá 404', async () => {
