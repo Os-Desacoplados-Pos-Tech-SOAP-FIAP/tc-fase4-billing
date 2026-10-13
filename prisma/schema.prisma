@@ -1,0 +1,103 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StatusOrcamento {
+  ENVIADO
+  APROVADO
+  REPROVADO
+  EXPIRADO
+  CANCELADO
+}
+
+enum StatusCobranca {
+  PENDENTE
+  PAGA
+  RECUSADA
+}
+
+/// Orçamento de uma OS. O token de aprovação fica só como hash (SHA-256).
+model Orcamento {
+  id           String          @id
+  osId         String          @unique
+  numeroOs     Int             @unique
+  clienteNome  String
+  clienteEmail String
+  itens        Json
+  valorTotal   Decimal         @db.Decimal(10, 2)
+  status       StatusOrcamento
+  validoAte    DateTime
+  tokenHash    String
+  decididoEm   DateTime?
+  /// Concorrência otimista: decisão, expiração e compensação nunca se sobrepõem.
+  versao       Int
+  criadoEm     DateTime        @default(now())
+  atualizadoEm DateTime        @updatedAt
+
+  @@index([status, validoAte])
+}
+
+// Índice único parcial "Cobranca_osId_pendente_key" (uma cobrança PENDENTE por OS) fica na
+// migração inicial: o Prisma não expressa índice com WHERE.
+model Cobranca {
+  id           String         @id
+  osId         String
+  orcamentoId  String
+  valor        Decimal        @db.Decimal(10, 2)
+  preferenceId String
+  initPoint    String
+  status       StatusCobranca
+  mpPaymentId  String?
+  versao       Int
+  criadoEm     DateTime       @default(now())
+  atualizadoEm DateTime       @updatedAt
+
+  @@index([osId])
+}
+
+/// Pagamentos informados pelo gateway (um por id do Mercado Pago), com o payload bruto para auditoria.
+model Pagamento {
+  mpPaymentId  String   @id
+  cobrancaId   String
+  status       String
+  valor        Decimal  @db.Decimal(10, 2)
+  payloadBruto Json
+  recebidoEm   DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([cobrancaId])
+}
+
+/// Outbox transacional: gravada junto com o estado, publicada pelo OutboxPublisher.
+/// `seq` define a ordem de publicação (criadoEm pode empatar ou vir fora de ordem entre transações).
+// Índice parcial "Outbox_pendentes_grupo_idx" ("groupId", "seq") WHERE "publicadoEm" IS NULL fica
+// na migração inicial: o Prisma não expressa índice com WHERE.
+model Outbox {
+  id          String    @id @default(uuid())
+  seq         BigInt    @unique @default(autoincrement())
+  messageId   String    @unique
+  type        String
+  destination String
+  groupId     String
+  body        Json
+  criadoEm    DateTime  @default(now())
+  publicadoEm DateTime?
+  tentativas  Int       @default(0)
+  ultimoErro  String?
+  /// Contexto W3C de quem gravou o evento, para continuar o trace no consumidor.
+  traceparent String?
+
+  @@index([publicadoEm, seq])
+}
+
+/// Idempotência das mensagens recebidas.
+model ProcessedMessage {
+  messageId    String   @id
+  processadoEm DateTime @default(now())
+}
