@@ -16,3 +16,8 @@ export function tokenConfere(token: string, hash: string): boolean {
   const guardado = Buffer.from(hash, 'hex');
   return esperado.length === guardado.length && timingSafeEqual(esperado, guardado);
 }
+
+/** Link enviado no e-mail; aponta para a rota pública do Billing (via API Gateway na AWS). */
+export function linkDeAprovacao(urlPublica: string, numeroOs: number, token: string): string {
+  return `${urlPublica}/api/billing/publico/orcamentos/${numeroOs}?token=${token}`;
+}

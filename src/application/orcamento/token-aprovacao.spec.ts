@@ -1,4 +1,4 @@
-import { gerarTokenAprovacao, hashToken, tokenConfere } from './token-aprovacao';
+import { gerarTokenAprovacao, hashToken, linkDeAprovacao, tokenConfere } from './token-aprovacao';
 
 describe('token de aprovação', () => {
   it('gera token aleatório e guarda só o hash', () => {
@@ -15,5 +15,11 @@ describe('token de aprovação', () => {
     expect(tokenConfere(token, hash)).toBe(true);
     expect(tokenConfere(`${token}x`, hash)).toBe(false);
     expect(tokenConfere(token, 'nao-hex')).toBe(false);
+  });
+
+  it('monta o link público de aprovação', () => {
+    expect(linkDeAprovacao('http://x', 42, 'abc')).toBe(
+      'http://x/api/billing/publico/orcamentos/42?token=abc',
+    );
   });
 });
