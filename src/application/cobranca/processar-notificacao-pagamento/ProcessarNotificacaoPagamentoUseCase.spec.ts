@@ -11,11 +11,12 @@ describe('ProcessarNotificacaoPagamentoUseCase', () => {
   let useCase: ProcessarNotificacaoPagamentoUseCase;
   let cobrancaId: string;
   let loggerError: jest.SpyInstance;
+  let loggerWarn: jest.SpyInstance;
 
   const statusAtual = async () => (await c.cobrancas.buscarPorId(cobrancaId))!.status;
 
   beforeEach(async () => {
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    loggerWarn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     c = criarCenario();
     useCase = new ProcessarNotificacaoPagamentoUseCase(
@@ -129,6 +130,42 @@ describe('ProcessarNotificacaoPagamentoUseCase', () => {
     );
   });
 
+  it('aprovado na cobrança pendente quando a recusada já foi paga depois (D7) confirma e alerta estorno manual', async () => {
+    c.gateway.pagar('mp-1', { referenciaExterna: cobrancaId, valor: 165.5, status: 'rejected' });
+    await useCase.execute('mp-1');
+    const nova = Cobranca.criar(
+      {
+        osId: OS,
+        orcamentoId: '7f2b2a8e-1d7c-4a35-9c1e-0a4f3b2c1d11',
+        valor: 165.5,
+        preferenceId: 'p2',
+        initPoint: 'https://mp.test/checkout/2',
+      },
+      new UniqueID(),
+    );
+    await c.cobrancas.salvar(nova);
+    const novaId = nova.id.toValue();
+
+    c.gateway.pagar('mp-2', { referenciaExterna: cobrancaId, valor: 165.5 });
+    await useCase.execute('mp-2');
+    expect(await statusAtual()).toBe(StatusCobranca.PAGA);
+    expect(loggerError).not.toHaveBeenCalled();
+
+    c.gateway.pagar('mp-3', { referenciaExterna: novaId, valor: 165.5 });
+    await useCase.execute('mp-3');
+
+    expect((await c.cobrancas.buscarPorId(novaId))!.status).toBe(StatusCobranca.PAGA);
+    expect(loggerError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        msg: 'Segundo pagamento aprovado na mesma OS (estorno manual)',
+        osId: OS,
+        cobrancaId: novaId,
+        outraCobrancaId: cobrancaId,
+        mpPaymentId: 'mp-3',
+      }),
+    );
+  });
+
   it('recusa depois de pago é ignorada', async () => {
     c.gateway.pagar('mp-1', { referenciaExterna: cobrancaId, valor: 165.5 });
     c.gateway.pagar('mp-2', { referenciaExterna: cobrancaId, valor: 165.5, status: 'rejected' });
@@ -143,6 +180,10 @@ describe('ProcessarNotificacaoPagamentoUseCase', () => {
     await useCase.execute('mp-1');
     expect(await statusAtual()).toBe(StatusCobranca.PENDENTE);
     expect(c.outbox.mensagens).toHaveLength(0);
+    expect(loggerError).toHaveBeenCalledWith(
+      expect.objectContaining({ cobrancaId, mpPaymentId: 'mp-1', valorPago: 1, valorCobrado: 165.5 }),
+    );
+    expect(c.pagamentos.registros.get('mp-1')).toMatchObject({ cobrancaId, status: 'approved' });
   });
 
   it('pagamento sem cobrança correspondente é ignorado', async () => {
@@ -152,5 +193,20 @@ describe('ProcessarNotificacaoPagamentoUseCase', () => {
     await useCase.execute('mp-2');
     expect(c.outbox.mensagens).toHaveLength(0);
     expect(c.pagamentos.registros.size).toBe(0);
+  });
+
+  it('pagamento inexistente no gateway é ignorado com aviso, sem erro', async () => {
+    await expect(useCase.execute('mp-fantasma')).resolves.toBeUndefined();
+    expect(loggerWarn).toHaveBeenCalledWith({
+      msg: 'Pagamento inexistente no gateway; ignorado',
+      mpPaymentId: 'mp-fantasma',
+    });
+    expect(c.outbox.mensagens).toHaveLength(0);
+    expect(c.pagamentos.registros.size).toBe(0);
+  });
+
+  it('outros erros do gateway continuam propagando', async () => {
+    jest.spyOn(c.gateway, 'consultarPagamento').mockRejectedValueOnce(new Error('mp fora'));
+    await expect(useCase.execute('mp-1')).rejects.toThrow('mp fora');
   });
 });

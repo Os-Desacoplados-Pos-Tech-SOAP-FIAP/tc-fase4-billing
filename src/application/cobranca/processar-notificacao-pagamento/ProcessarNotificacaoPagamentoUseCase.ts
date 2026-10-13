@@ -5,6 +5,7 @@ import { Cobranca, StatusCobranca } from '../../../domain/cobranca/entities/Cobr
 import { ICobrancaRepository } from '../../../domain/cobranca/repositories/ICobrancaRepository';
 import { IPagamentoRepository } from '../../../domain/cobranca/repositories/IPagamentoRepository';
 import { ensureFound } from '../../ensure-found';
+import { RecursoNaoEncontradoError } from '../../errors';
 import { IOutbox } from '../../ports/outbox';
 import {
   IPaymentGateway,
@@ -40,7 +41,8 @@ export class ProcessarNotificacaoPagamentoUseCase {
   ) {}
 
   async execute(mpPaymentId: string): Promise<void> {
-    const pagamento = await this.gateway.consultarPagamento(mpPaymentId);
+    const pagamento = await this.consultar(mpPaymentId);
+    if (!pagamento) return;
     const cobranca = pagamento.referenciaExterna
       ? await this.cobrancas.buscarPorId(pagamento.referenciaExterna)
       : null;
@@ -53,6 +55,17 @@ export class ProcessarNotificacaoPagamentoUseCase {
       return;
     }
     await this.transacao.run(() => this.aplicar(pagamento, cobranca.id.toValue()));
+  }
+
+  /** Id inexistente (ex.: notificação de teste do painel): ignora, para o webhook responder 200. */
+  private async consultar(mpPaymentId: string): Promise<PagamentoNoGateway | null> {
+    try {
+      return await this.gateway.consultarPagamento(mpPaymentId);
+    } catch (erro) {
+      if (!(erro instanceof RecursoNaoEncontradoError)) throw erro;
+      this.logger.warn({ msg: 'Pagamento inexistente no gateway; ignorado', mpPaymentId });
+      return null;
+    }
   }
 
   private async aplicar(pagamento: PagamentoNoGateway, cobrancaId: string): Promise<void> {
@@ -93,18 +106,16 @@ export class ProcessarNotificacaoPagamentoUseCase {
       });
       return;
     }
-    if (cobranca.status === StatusCobranca.RECUSADA) {
-      await this.alertarSegundoPagamento(cobranca, contexto);
-    }
+    await this.alertarSegundoPagamento(cobranca, contexto);
     cobranca.confirmar(pagamento.id);
     await this.cobrancas.salvar(cobranca);
     await this.outbox.publicar(eventoPagamentoConfirmado(cobranca));
   }
 
   /**
-   * Cobrança recusada paga depois (D7) quando a OS já tem outra paga: o dinheiro entrou duas
-   * vezes. Confirma mesmo assim e deixa o rastro para estorno manual. Consulta antes de
-   * confirmar, para não encontrar a própria cobrança.
+   * Confirmação quando a OS já tem outra cobrança paga (D7, em qualquer ordem): o dinheiro
+   * entrou duas vezes. Confirma mesmo assim e deixa o rastro para estorno manual. Consulta
+   * antes de confirmar e ignora a própria cobrança.
    */
   private async alertarSegundoPagamento(
     cobranca: Cobranca,

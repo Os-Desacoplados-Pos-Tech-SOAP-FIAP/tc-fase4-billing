@@ -1,3 +1,4 @@
+import { RecursoNaoEncontradoError } from '../../src/application/errors';
 import {
   IPaymentGateway,
   NovaPreferencia,
@@ -21,7 +22,7 @@ export class GatewayDeTeste implements IPaymentGateway {
 
   async consultarPagamento(id: string): Promise<PagamentoNoGateway> {
     const pagamento = this.pagamentos.get(id);
-    if (!pagamento) throw new Error(`pagamento ${id} desconhecido`);
+    if (!pagamento) throw new RecursoNaoEncontradoError('Pagamento');
     return pagamento;
   }
 
