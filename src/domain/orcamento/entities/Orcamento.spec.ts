@@ -133,6 +133,12 @@ describe('Orcamento', () => {
     expect(erro(() => Orcamento.criar(novo()).aprovar(DEPOIS)).code).toBe('ORCAMENTO_VENCIDO');
   });
 
+  it('a mensagem de decisão recusada cita o status atual', () => {
+    const o = Orcamento.criar(novo());
+    o.cancelar();
+    expect(erro(() => o.aprovar(AGORA)).message).toBe('Orçamento não aceita decisão: está CANCELADO');
+  });
+
   it('expira só se ENVIADO e vencido', () => {
     const o = Orcamento.criar(novo());
     expect(erro(() => o.expirar(AGORA)).code).toBe('ORCAMENTO_NAO_EXPIRAVEL');

@@ -188,7 +188,10 @@ export class Orcamento extends Entity<OrcamentoProps> {
 
   private decidir(status: StatusOrcamento, agora: Date): void {
     if (this.props.status !== StatusOrcamento.ENVIADO) {
-      throw new DomainError('Orçamento já foi decidido', 'ORCAMENTO_JA_DECIDIDO');
+      throw new DomainError(
+        `Orçamento não aceita decisão: está ${this.props.status}`,
+        'ORCAMENTO_JA_DECIDIDO',
+      );
     }
     if (this.vencido(agora)) {
       throw new DomainError('Orçamento vencido', 'ORCAMENTO_VENCIDO');
