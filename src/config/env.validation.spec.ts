@@ -14,12 +14,14 @@ describe('validarAmbiente', () => {
   });
 
   it('exige DATABASE_URL e JWT_SECRET', () => {
-    expect(() => validarAmbiente({ MESSAGING_ENABLED: 'false' })).toThrow('DATABASE_URL, JWT_SECRET');
+    expect(() => validarAmbiente({ MESSAGING_ENABLED: 'false' })).toThrow(
+      'DATABASE_URL, JWT_SECRET',
+    );
   });
 
   it('exige credenciais do Mercado Pago quando o provedor é mercadopago', () => {
     expect(() => validarAmbiente({ ...BASE, PAYMENT_PROVIDER: 'mercadopago' })).toThrow(
-      'MP_ACCESS_TOKEN, MP_WEBHOOK_SECRET, MP_NOTIFICATION_URL',
+      'MP_ACCESS_TOKEN, MP_WEBHOOK_SECRET, MP_NOTIFICATION_URL, PUBLIC_BASE_URL',
     );
     const completo = {
       ...BASE,
@@ -27,8 +29,13 @@ describe('validarAmbiente', () => {
       MP_ACCESS_TOKEN: 'a',
       MP_WEBHOOK_SECRET: 'b',
       MP_NOTIFICATION_URL: 'https://x/api/billing/webhooks/mercadopago',
+      PUBLIC_BASE_URL: 'https://x',
     };
     expect(validarAmbiente(completo)).toBe(completo);
+  });
+
+  it('trata PAYMENT_PROVIDER vazio como fake', () => {
+    expect(validarAmbiente({ ...BASE, PAYMENT_PROVIDER: '' })).toBeDefined();
   });
 
   it('rejeita provedor desconhecido', () => {
@@ -43,5 +50,11 @@ describe('validarAmbiente', () => {
       'ORCAMENTO_EXPIRACAO_INTERVALO_MS',
     );
     expect(validarAmbiente({ ...BASE, ORCAMENTO_EXPIRACAO_INTERVALO_MS: '0' })).toBeDefined();
+    expect(() =>
+      validarAmbiente({ ...BASE, ORCAMENTO_EXPIRACAO_INTERVALO_MS: '86400001' }),
+    ).toThrow('ORCAMENTO_EXPIRACAO_INTERVALO_MS');
+    expect(
+      validarAmbiente({ ...BASE, ORCAMENTO_EXPIRACAO_INTERVALO_MS: '86400000' }),
+    ).toBeDefined();
   });
 });
