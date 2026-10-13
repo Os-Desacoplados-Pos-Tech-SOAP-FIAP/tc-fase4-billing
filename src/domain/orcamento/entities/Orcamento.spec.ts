@@ -60,6 +60,46 @@ describe('Orcamento', () => {
     expect(erro(() => Orcamento.criar(novo(alteracao))).code).toBe(code);
   });
 
+  it('rejeita orçamento sem valor a cobrar', () => {
+    const [item] = novo().itens;
+    const gratis = { ...item, valorUnitario: 0 };
+    expect(erro(() => Orcamento.criar(novo({ itens: [gratis] }))).code).toBe(
+      'ORCAMENTO_VALOR_ZERO',
+    );
+  });
+
+  it('rejeita valor unitário com mais de 2 casas decimais', () => {
+    const [item] = novo().itens;
+    expect(
+      erro(() => Orcamento.criar(novo({ itens: [{ ...item, valorUnitario: 1.005 }] }))).code,
+    ).toBe('ORCAMENTO_VALOR_INVALIDO');
+    expect(Orcamento.criar(novo({ itens: [{ ...item, valorUnitario: 45.1 }] })).valorTotal).toBe(
+      90.2,
+    );
+    expect(Orcamento.criar(novo({ itens: [{ ...item, valorUnitario: 0.1 }] })).valorTotal).toBe(
+      0.2,
+    );
+  });
+
+  it('rejeita total acima do limite do Decimal(10,2)', () => {
+    const [item] = novo().itens;
+    const caro = { ...item, quantidade: 1, valorUnitario: 100_000_000 };
+    expect(erro(() => Orcamento.criar(novo({ itens: [caro] }))).code).toBe(
+      'ORCAMENTO_VALOR_EXCEDIDO',
+    );
+    const noLimite = { ...caro, valorUnitario: 99_999_999.99 };
+    expect(Orcamento.criar(novo({ itens: [noLimite] })).valorTotal).toBe(99_999_999.99);
+  });
+
+  it('datas devolvidas não alteram o agregado', () => {
+    const o = Orcamento.criar(novo());
+    o.validoAte.setFullYear(1999);
+    expect(o.validoAte.getTime()).toBe(VALIDO_ATE.getTime());
+    o.aprovar(AGORA);
+    o.decididoEm?.setFullYear(1999);
+    expect(o.decididoEm?.getTime()).toBe(AGORA.getTime());
+  });
+
   it('rejeita item repetido, quantidade e valor inválidos', () => {
     const [item] = novo().itens;
     expect(erro(() => Orcamento.criar(novo({ itens: [item, item] }))).code).toBe(
@@ -68,9 +108,9 @@ describe('Orcamento', () => {
     expect(erro(() => Orcamento.criar(novo({ itens: [{ ...item, quantidade: 1.5 }] }))).code).toBe(
       'ORCAMENTO_QUANTIDADE_INVALIDA',
     );
-    expect(erro(() => Orcamento.criar(novo({ itens: [{ ...item, valorUnitario: -1 }] }))).code).toBe(
-      'ORCAMENTO_VALOR_INVALIDO',
-    );
+    expect(
+      erro(() => Orcamento.criar(novo({ itens: [{ ...item, valorUnitario: -1 }] }))).code,
+    ).toBe('ORCAMENTO_VALOR_INVALIDO');
   });
 
   it('aprova dentro da validade e registra a data da decisão', () => {

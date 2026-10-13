@@ -47,6 +47,9 @@ export interface OrcamentoProps extends EntityProps, NovoOrcamento {
   versao: number;
 }
 
+/** Limite do Decimal(10,2) da coluna de valor. */
+const VALOR_TOTAL_MAXIMO = 99_999_999.99;
+
 const CANCELAVEIS: ReadonlySet<StatusOrcamento> = new Set([
   StatusOrcamento.ENVIADO,
   StatusOrcamento.APROVADO,
@@ -75,11 +78,19 @@ export class Orcamento extends Entity<OrcamentoProps> {
       throw new DomainError('Orçamento precisa de ao menos um item', 'ORCAMENTO_SEM_ITENS');
     }
     validarItens(novo.itens);
+    const valorTotal = somarEmCentavos(novo.itens);
+    if (valorTotal === 0) {
+      throw new DomainError('Orçamento sem valor a cobrar', 'ORCAMENTO_VALOR_ZERO');
+    }
+    if (valorTotal > VALOR_TOTAL_MAXIMO) {
+      throw new DomainError('Valor total do orçamento excede o limite', 'ORCAMENTO_VALOR_EXCEDIDO');
+    }
     return new Orcamento({
       ...novo,
       cliente: { ...novo.cliente },
       itens: novo.itens.map((item) => ({ ...item })),
-      valorTotal: somarEmCentavos(novo.itens),
+      validoAte: new Date(novo.validoAte),
+      valorTotal,
       status: StatusOrcamento.ENVIADO,
       decididoEm: null,
       versao: 0,
@@ -88,7 +99,11 @@ export class Orcamento extends Entity<OrcamentoProps> {
 
   public static restaurar(props: OrcamentoProps, id: UniqueID): Orcamento {
     return new Orcamento(
-      { ...props, cliente: { ...props.cliente }, itens: props.itens.map((item) => ({ ...item })) },
+      {
+        ...props,
+        cliente: { ...props.cliente },
+        itens: props.itens.map((item) => ({ ...item })),
+      },
       id,
     );
   }
@@ -118,7 +133,7 @@ export class Orcamento extends Entity<OrcamentoProps> {
   }
 
   public get validoAte(): Date {
-    return this.props.validoAte;
+    return new Date(this.props.validoAte);
   }
 
   public get tokenHash(): string {
@@ -126,7 +141,7 @@ export class Orcamento extends Entity<OrcamentoProps> {
   }
 
   public get decididoEm(): Date | null {
-    return this.props.decididoEm;
+    return this.props.decididoEm && new Date(this.props.decididoEm);
   }
 
   public get versao(): number {
@@ -197,7 +212,11 @@ function validarItens(itens: ItemOrcamento[]): void {
         'ORCAMENTO_QUANTIDADE_INVALIDA',
       );
     }
-    if (!Number.isFinite(item.valorUnitario) || item.valorUnitario < 0) {
+    if (
+      !Number.isFinite(item.valorUnitario) ||
+      item.valorUnitario < 0 ||
+      temMaisDeDuasCasas(item.valorUnitario)
+    ) {
       throw new DomainError(`Valor inválido no item ${item.itemId}`, 'ORCAMENTO_VALOR_INVALIDO');
     }
   }
@@ -210,4 +229,8 @@ function somarEmCentavos(itens: ItemOrcamento[]): number {
     0,
   );
   return centavos / 100;
+}
+
+function temMaisDeDuasCasas(valor: number): boolean {
+  return Math.abs(Math.round(valor * 100) - valor * 100) > 1e-6;
 }
