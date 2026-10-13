@@ -28,12 +28,15 @@ describe('e-mails ao cliente', () => {
     expect(email.assunto).toContain('#42');
     expect(email.corpo).toContain('Troca de óleo');
     expect(email.corpo).toContain('R$');
-    expect(email.corpo).toContain('2026-10-22T10:00:00.000Z');
+    expect(email.corpo).toContain('22/10/2026');
+    expect(email.corpo).toContain('07:00');
     expect(email.corpo).toContain('http://x/link?token=abc');
   });
 
   it('orçamento cancelado explica o motivo quando houver', () => {
-    expect(emailOrcamentoCancelado(orcamento, 'sem estoque').corpo).toContain('sem estoque');
+    expect(emailOrcamentoCancelado(orcamento, 'cliente desistiu').corpo).toContain(
+      'cliente desistiu',
+    );
     expect(emailOrcamentoCancelado(orcamento).corpo).toContain('cancelado');
   });
 

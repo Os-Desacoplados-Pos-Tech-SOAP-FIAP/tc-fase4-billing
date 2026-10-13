@@ -3,6 +3,11 @@ import { Orcamento } from '../domain/orcamento/entities/Orcamento';
 import { Email } from './ports/notificador';
 
 const moeda = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const dataHora = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo',
+  dateStyle: 'short',
+  timeStyle: 'short',
+});
 
 export function emailOrcamentoEnviado(orcamento: Orcamento, link: string): Email {
   const itens = orcamento.itens.map(
@@ -18,7 +23,7 @@ export function emailOrcamentoEnviado(orcamento: Orcamento, link: string): Email
       ...itens,
       '',
       `Total: ${moeda.format(orcamento.valorTotal)}`,
-      `Válido até: ${orcamento.validoAte.toISOString()}`,
+      `Válido até: ${dataHora.format(orcamento.validoAte)}`,
       '',
       `Aprove ou reprove pelo link (uso único): ${link}`,
     ].join('\n'),
