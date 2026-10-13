@@ -73,7 +73,16 @@ export class OrcamentoMessageHandlers implements OnModuleInit {
         correlationId: envelope.correlationId,
         numeroOs: payload.numeroOs,
         cliente: { nome: payload.cliente.nome, email: payload.cliente.email },
-        itens: payload.itens.map((item) => ({ ...item })),
+        itens: payload.itens.map(
+          ({ itemId, tipo, referenciaId, descricao, quantidade, valorUnitario }) => ({
+            itemId,
+            tipo,
+            referenciaId,
+            descricao,
+            quantidade,
+            valorUnitario,
+          }),
+        ),
       });
     });
     this.registry.registrar(BILLING_COMMANDS.CANCELAR_ORCAMENTO, async (envelope) => {

@@ -23,7 +23,7 @@ interface NotificacaoMercadoPago {
 
 /**
  * Webhook "Pagamentos" do Mercado Pago. A assinatura prova a origem; o status do
- * pagamento vem da consulta à API, nunca do corpo. Erro → 500, e o Mercado Pago reenvia.
+ * pagamento vem da consulta à API, nunca do corpo. Erro responde 5xx/409 e o Mercado Pago reenvia.
  * O manifesto da assinatura usa o `data.id` da query string (o corpo só é fallback).
  */
 @ApiTags('Webhooks')

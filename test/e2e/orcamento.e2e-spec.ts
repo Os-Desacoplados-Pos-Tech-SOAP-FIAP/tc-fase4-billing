@@ -167,4 +167,30 @@ describe('Orçamento (e2e)', () => {
     await http().get('/api/billing/orcamentos/nao-uuid').set('Authorization', atendente).expect(400);
     await http().get(`/api/billing/orcamentos/${OS}`).set('Authorization', atendente).expect(404);
   });
+
+  it('link público ignora parâmetros extras e rejeita token ausente ou duplicado', async () => {
+    await gerar();
+    const t = tokenDoUltimoEmail(emails);
+
+    await http().get(`${publico}?token=${t}&utm_source=email&fbclid=abc`).expect(200);
+    await http().get(publico).expect(400);
+    await http().get(`${publico}?token=`).expect(400);
+    await http().get(`${publico}?token=${t}&token=${t}`).expect(400);
+  });
+
+  it('tolerant reader: campo extra no item da mensagem não é persistido', async () => {
+    const base = payloadOrcamento();
+    await registry.despachar(
+      criarEnvelope(BILLING_COMMANDS.GERAR_ORCAMENTO, OS, {
+        ...base,
+        itens: base.itens.map((item) => ({ ...item, campoExtra: 'x' })),
+      }),
+    );
+    const interno = await http()
+      .get(`/api/billing/orcamentos/${OS}`)
+      .set('Authorization', atendente)
+      .expect(200);
+    expect(interno.body.itens).toHaveLength(2);
+    expect(interno.body.itens.every((item: object) => !('campoExtra' in item))).toBe(true);
+  });
 });

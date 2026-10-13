@@ -1,5 +1,15 @@
-import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseIntPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { ConsultarOrcamentoPublicoUseCase } from '../../application/orcamento/consultar-orcamento-publico/ConsultarOrcamentoPublicoUseCase';
 import { DecidirOrcamentoUseCase } from '../../application/orcamento/decidir-orcamento/DecidirOrcamentoUseCase';
@@ -7,7 +17,17 @@ import { Public } from '../../common/decorators/public.decorator';
 import { ApiValidationResponses } from '../../common/decorators/swagger';
 import { DecidirOrcamentoDto } from './dto/decidir-orcamento.dto';
 import { OrcamentoPublicoResponseDto } from './dto/orcamento-publico-response.dto';
-import { TokenQueryDto } from './dto/token-query.dto';
+
+/**
+ * Lê só o `token` da query: parâmetros extras (utm_*, fbclid) acrescentados por clientes de
+ * e-mail são ignorados. Ausente, vazio ou repetido (vira array) → 400.
+ */
+function tokenDaQuery(valor: unknown): string {
+  if (typeof valor !== 'string' || valor.length === 0) {
+    throw new BadRequestException('token é obrigatório');
+  }
+  return valor;
+}
 
 /** Rotas do link enviado por e-mail: sem JWT, autorizadas pelo token do orçamento. */
 @ApiTags('Orçamento (cliente)')
@@ -24,13 +44,15 @@ export class OrcamentoPublicoController {
     summary: 'Orçamento pelo link do e-mail',
     description: 'Token errado ou OS inexistente respondem 404 (não revela quais OS existem).',
   })
+  @ApiQuery({ name: 'token', required: true, description: 'Token recebido no link do e-mail' })
+  @ApiResponse({ status: 400, description: 'Token ausente ou repetido' })
   @ApiResponse({ status: 200, type: OrcamentoPublicoResponseDto })
   @ApiResponse({ status: 404, description: 'OS inexistente ou token inválido' })
   async obter(
     @Param('numeroOs', ParseIntPipe) numeroOs: number,
-    @Query() query: TokenQueryDto,
+    @Query('token') token: unknown,
   ): Promise<OrcamentoPublicoResponseDto> {
-    return OrcamentoPublicoResponseDto.fromDomain(await this.consultar.execute(numeroOs, query.token));
+    return OrcamentoPublicoResponseDto.fromDomain(await this.consultar.execute(numeroOs, tokenDaQuery(token)));
   }
 
   @Post(':numeroOs/decisao')

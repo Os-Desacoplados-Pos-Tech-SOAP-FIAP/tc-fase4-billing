@@ -19,8 +19,8 @@ import { OrcamentoModule } from './modules/orcamento/orcamento.module';
     LoggerModule.forRoot({
       pinoHttp: {
         autoLogging: true,
-        // Token JWT e cookies nunca vão para o log.
-        redact: ['req.headers.authorization', 'req.headers.cookie'],
+        // Token JWT, cookies e Referer (pode carregar o token do link) nunca vão para o log.
+        redact: ['req.headers.authorization', 'req.headers.cookie', 'req.headers.referer'],
         // Token de aprovação (query string das rotas públicas) também não. O pino-http aplica
         // este serializer sobre o padrão (pino.stdSerializers.req).
         serializers: { req: semQueryPublica },
