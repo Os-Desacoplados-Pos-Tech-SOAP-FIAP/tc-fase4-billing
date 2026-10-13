@@ -1,0 +1,26 @@
+# Dependências locais do Billing. O compose com os 4 serviços fica no tc-fase4-docs/local.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: billing
+      POSTGRES_PASSWORD: billing
+      POSTGRES_DB: billing
+    ports:
+      - '5435:5432'
+    volumes:
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U billing']
+      interval: 5s
+      retries: 10
+
+  localstack:
+    image: localstack/localstack:3.8
+    environment:
+      SERVICES: sns,sqs
+      AWS_DEFAULT_REGION: us-east-1
+    ports:
+      - '4566:4566'
+    volumes:
+      - ./docker/localstack/init-billing.sh:/etc/localstack/init/ready.d/init-billing.sh:ro
