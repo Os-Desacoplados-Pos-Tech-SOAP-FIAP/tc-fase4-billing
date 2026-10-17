@@ -176,7 +176,7 @@ npx prisma migrate deploy
 npm run start:dev        # http://localhost:3004/api/billing/docs
 ```
 
-O `docker-compose.yml` sobe só as dependências do Billing; o compose com os quatro serviços fica em `tc-fase4-docs/local`.
+O `docker-compose.yml` sobe só as dependências do Billing; o compose com os quatro serviços fica em `tc-fase4-os/local`.
 O Postgres cria também o banco `billing_test` (usado pelos testes). O script `docker/localstack/init-billing.sh` cria a fila
 de entrada com DLQ, o tópico de eventos e uma fila `oficina-billing-events-spy.fifo` assinando o tópico, útil para observar
 os eventos publicados.
