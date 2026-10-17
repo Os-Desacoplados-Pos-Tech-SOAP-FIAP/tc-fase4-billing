@@ -232,4 +232,87 @@ Qualidade: `npm run lint:ci` (sem warnings) e `npm run build`.
 `.github/workflows/ci.yml` (job `ci`): Postgres 16 como serviço → `prisma generate` → lint → build → testes com
 cobertura (relatório publicado como artefato) → build da imagem Docker → análise SonarCloud (`sonar.qualitygate.wait=true`).
 `ci` e `SonarCloud Code Analysis` (quality gate) são checks obrigatórios para merge na `main`.
-Deploy no EKS (CD) e Terraform do serviço entram na Etapa 8.
+
+| Workflow | Gatilho | O que faz |
+|---|---|---|
+| `ci.yml` (job `ci`) | PR e push na `main` | lint, build, testes, imagem, Sonar |
+| `terraform.yml` (job `terraform`) | PR/push que mexe em `terraform/` | `fmt -check`, `init -backend=false`, `validate` |
+| `terraform.yml` (job `deploy`) | só **Run workflow** (`plan`/`apply`/`destroy`), com aprovação no environment `aws-infra` | aplica ou destrói os recursos do serviço |
+| `cd.yml` | CI verde na `main` ou **Run workflow** | imagem no ECR e deploy no EKS |
+
+## Deploy no EKS
+
+### O que o Terraform do serviço cria (`terraform/`)
+
+State em `s3://tc-fase4-tfstate-538880133939/billing/terraform.tfstate`; lê a infra
+compartilhada de `infra/terraform.tfstate` (`tc-fase4-infra`), de onde vêm também a URL
+pública (`public_base_url`) e a URL do webhook (`mercadopago_webhook_url`) do API Gateway.
+
+| Recurso | Nome |
+|---|---|
+| RDS PostgreSQL 16 (`db.t4g.micro`, 20 GB gp3, privado) | `oficina-fase4-billing` |
+| SG do RDS (5432 só a partir dos nodes do EKS) | `oficina-fase4-billing-rds` |
+| Segredo com a `DATABASE_URL` | `oficina-fase4/billing/DATABASE_URL` |
+| Segredos do Mercado Pago, **sem valor** (gravado à mão) | `oficina-fase4/billing/MP_ACCESS_TOKEN`, `oficina-fase4/billing/MP_WEBHOOK_SECRET` |
+| Fila FIFO de entrada + DLQ (redrive após 3 recebimentos) | `oficina-billing-inbox.fifo`, `oficina-billing-inbox-dlq.fifo` |
+| Tópico FIFO de eventos | `oficina-billing-events.fifo` |
+| Role IRSA do pod (consome a inbox, publica no tópico) | `oficina-fase4-billing` |
+
+Configuração de estudo: sem backup, sem snapshot final e sem proteção contra exclusão. A
+assinatura do tópico é feita pelo OS, que é quem consome os eventos.
+
+### Ordem
+
+`tc-fase4-infra` → catalog → execution → **billing** → os → auth → gateway. Para derrubar,
+a ordem inversa (o OS assina o tópico do billing e tem permissão na fila dele).
+
+### Rodar o Terraform
+
+Actions → **Terraform** → **Run workflow** → escolha `plan`, `apply` ou `destroy` → aprove
+em **Review deployments**. O `destroy` remove antes o namespace `billing` do cluster (pods
+e Ingress), se o cluster estiver no ar.
+
+### Provedor de pagamento e segredos do Mercado Pago
+
+O provedor vem da variável de repositório `PAYMENT_PROVIDER` (Settings → Secrets and
+variables → Actions → Variables). Sem ela, vale `fake` e o CD emite um warning.
+
+- **`fake`**: cobrança simulada pela rota `/api/billing/dev/pagamentos/<osId>/simular`; as
+  credenciais do Mercado Pago não entram no Secret.
+- **`mercadopago`**: o CD lê `MP_ACCESS_TOKEN` e `MP_WEBHOOK_SECRET` do Secrets Manager e
+  falha antes do build, com o comando a rodar, se algum estiver sem valor.
+
+O Terraform cria os dois segredos vazios: o valor nunca passa pelo state nem pelo Git. Depois
+de cada `apply` (o `destroy` apaga os segredos na hora), grave os valores:
+
+```bash
+aws secretsmanager put-secret-value --region us-east-1 \
+  --secret-id oficina-fase4/billing/MP_ACCESS_TOKEN --secret-string '<access-token>'
+aws secretsmanager put-secret-value --region us-east-1 \
+  --secret-id oficina-fase4/billing/MP_WEBHOOK_SECRET --secret-string '<assinatura-secreta-do-webhook>'
+```
+
+Para trocar de provedor: altere a variável e rode o CD (**Run workflow**); com o mesmo SHA
+ele reinicia o Deployment para os pods lerem o ConfigMap e o Secret novos.
+
+### O que o CD faz
+
+1. Usa o SHA que passou no CI; pula com aviso se o cluster `oficina-fase4` não está
+   `ACTIVE` ou se o Terraform do billing não foi aplicado (state sem outputs).
+2. Confere `PAYMENT_PROVIDER` e, no modo `mercadopago`, se os segredos têm valor.
+3. Publica a imagem no ECR com tag = SHA (reaproveita se a tag já existe).
+4. Cria o Secret `billing-secret` (`DATABASE_URL`, `JWT_SECRET` e, no modo `mercadopago`,
+   `MP_ACCESS_TOKEN` e `MP_WEBHOOK_SECRET`, lidos do Secrets Manager) e o ConfigMap
+   `billing-config` (`PAYMENT_PROVIDER`, `INBOX_QUEUE_URL`, `EVENTS_TOPIC_ARN`,
+   `PUBLIC_BASE_URL`, `MP_NOTIFICATION_URL`, fixas e, se o Alloy estiver instalado,
+   `OTEL_EXPORTER_OTLP_ENDPOINT`).
+5. Aplica `k8s/base` com a imagem do ECR, a role IRSA e o SG do ALB; o initContainer
+   roda `prisma migrate deploy`. O serviço entra no ALB interno em `/api/billing`.
+6. Espera o rollout e faz um smoke em `/api/billing/health` de dentro do pod. O Billing
+   não tem seed.
+
+### Rollback
+
+Automático quando o rollout falha (`kubectl rollout undo`), com `describe` e logs no job.
+Manual: `kubectl rollout undo deployment/billing -n billing`, ou um `git revert` na `main`
+(o CD implanta o commit revertido).
