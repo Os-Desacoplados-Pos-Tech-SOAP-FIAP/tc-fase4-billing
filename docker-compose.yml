@@ -1,4 +1,4 @@
-# Dependências locais do Billing. O compose com os 4 serviços fica no tc-fase4-docs/local.
+# Dependências locais do Billing. O compose com os 4 serviços fica no tc-fase4-os/local.
 services:
   postgres:
     image: postgres:16-alpine
