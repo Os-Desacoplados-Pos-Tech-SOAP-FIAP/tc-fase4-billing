@@ -4,7 +4,7 @@ import { Email, INotificador } from '../../application/ports/notificador';
 
 /**
  * Envio simulado (decisão D3 do plano): o e-mail vira log estruturado, com o link, para a
- * demonstração. Trocar por SES é só implementar INotificador e mudar o binding.
+ * demonstração. É o padrão (NOTIFICADOR=console); o envio real é o SesNotificador.
  */
 @Injectable()
 export class ConsoleNotificador implements INotificador {
