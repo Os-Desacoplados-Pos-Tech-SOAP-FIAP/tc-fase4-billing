@@ -21,6 +21,7 @@
     "docker:down": "docker compose down"
   },
   "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1149.0",
     "@aws-sdk/client-sns": "^3.1149.0",
     "@aws-sdk/client-sqs": "^3.1149.0",
     "@nestjs/common": "^10.4.22",
