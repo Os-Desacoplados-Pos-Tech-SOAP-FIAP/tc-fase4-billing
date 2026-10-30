@@ -55,3 +55,29 @@ export function emailCobrancaGerada(orcamento: Orcamento, cobranca: Cobranca): E
     ].join('\n'),
   };
 }
+
+export function emailPagamentoAprovado(orcamento: Orcamento, valorPago: number): Email {
+  return {
+    para: orcamento.cliente.email,
+    assunto: `Pagamento da OS #${orcamento.numeroOs} confirmado`,
+    corpo: [
+      `Olá ${orcamento.cliente.nome},`,
+      '',
+      `Recebemos o pagamento de ${moeda.format(valorPago)} da OS #${orcamento.numeroOs}.`,
+      'Seu veículo já pode ser retirado.',
+    ].join('\n'),
+  };
+}
+
+export function emailPagamentoRecusado(orcamento: Orcamento): Email {
+  return {
+    para: orcamento.cliente.email,
+    assunto: `Pagamento da OS #${orcamento.numeroOs} recusado`,
+    corpo: [
+      `Olá ${orcamento.cliente.nome},`,
+      '',
+      `O pagamento da OS #${orcamento.numeroOs} foi recusado.`,
+      'Em breve você receberá um novo link de pagamento por e-mail.',
+    ].join('\n'),
+  };
+}
