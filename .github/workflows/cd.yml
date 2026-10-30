@@ -31,6 +31,10 @@ env:
   # Variável de repositório (Settings > Secrets and variables > Actions > Variables).
   # Sem ela, fake: o ensaio começa sem Mercado Pago e passa a mercadopago depois.
   PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER || 'fake' }}
+  # E-mail ao cliente: console (padrão, só log) ou ses. Com ses, SES_REMETENTE é uma
+  # identidade já verificada no SES (variável de repositório, nunca no Git).
+  NOTIFICADOR: ${{ vars.NOTIFICADOR || 'console' }}
+  SES_REMETENTE: ${{ vars.SES_REMETENTE }}
 
 jobs:
   deploy:
@@ -131,6 +135,27 @@ jobs:
           done
           exit "$FALTANDO"
 
+      - name: Notificador de e-mail
+        if: steps.state.outputs.ready == 'true'
+        # Falha antes do build: notificador inválido ou ses sem remetente (a app também
+        # recusaria subir, mas só depois do rollout).
+        run: |
+          case "$NOTIFICADOR" in
+            console)
+              echo "::notice::NOTIFICADOR=console - e-mails ao cliente so no log. Para envio real, defina as variaveis de repositorio NOTIFICADOR=ses e SES_REMETENTE."
+              ;;
+            ses)
+              if [ -z "$SES_REMETENTE" ]; then
+                echo "::error::NOTIFICADOR=ses sem SES_REMETENTE. Defina a variavel de repositorio SES_REMETENTE com uma identidade verificada no SES."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::NOTIFICADOR invalido: '$NOTIFICADOR' (use console ou ses)."
+              exit 1
+              ;;
+          esac
+
       - name: Login no ECR
         if: steps.state.outputs.ready == 'true'
         run: aws ecr get-login-password | docker login --username AWS --password-stdin "${ECR_URL%%/*}"
@@ -192,6 +217,8 @@ jobs:
             --from-literal=PAYMENT_PROVIDER="$PAYMENT_PROVIDER"
             --from-literal=PUBLIC_BASE_URL="$PUBLIC_BASE_URL"
             --from-literal=MP_NOTIFICATION_URL="$MP_NOTIFICATION_URL"
+            --from-literal=NOTIFICADOR="$NOTIFICADOR"
+            --from-literal=SES_REMETENTE="$SES_REMETENTE"
           )
           # Telemetria só se o Alloy estiver instalado (opcional na infra); sem ele a
           # variável fica de fora e a app roda sem exportar.
@@ -227,7 +254,7 @@ jobs:
           kubectl apply -f manifests.yaml | tee apply.txt
           # Mesmo SHA (re-run ou workflow_dispatch): o Deployment não muda e os pods
           # continuariam com o Secret/ConfigMap antigos (ex.: senha nova do RDS recriado ou
-          # troca de PAYMENT_PROVIDER).
+          # troca de PAYMENT_PROVIDER ou NOTIFICADOR).
           if grep -q "deployment.apps/$APP unchanged" apply.txt; then
             kubectl rollout restart "deployment/$APP" -n "$NAMESPACE"
           fi
