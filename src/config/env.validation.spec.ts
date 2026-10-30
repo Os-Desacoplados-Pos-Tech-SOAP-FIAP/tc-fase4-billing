@@ -42,6 +42,21 @@ describe('validarAmbiente', () => {
     expect(() => validarAmbiente({ ...BASE, PAYMENT_PROVIDER: 'pix' })).toThrow('PAYMENT_PROVIDER');
   });
 
+  it('notificador padrão é console e aceita ses com remetente', () => {
+    expect(validarAmbiente({ ...BASE, NOTIFICADOR: '' })).toBeDefined();
+    expect(validarAmbiente({ ...BASE, NOTIFICADOR: 'console' })).toBeDefined();
+    const ses = { ...BASE, NOTIFICADOR: 'ses', SES_REMETENTE: 'oficina@example.com' };
+    expect(validarAmbiente(ses)).toBe(ses);
+  });
+
+  it('exige SES_REMETENTE com NOTIFICADOR=ses', () => {
+    expect(() => validarAmbiente({ ...BASE, NOTIFICADOR: 'ses' })).toThrow('SES_REMETENTE');
+  });
+
+  it('rejeita notificador desconhecido', () => {
+    expect(() => validarAmbiente({ ...BASE, NOTIFICADOR: 'smtp' })).toThrow('NOTIFICADOR');
+  });
+
   it('rejeita validade e intervalo inválidos', () => {
     expect(() => validarAmbiente({ ...BASE, ORCAMENTO_VALIDADE_HORAS: '0' })).toThrow(
       'ORCAMENTO_VALIDADE_HORAS',
