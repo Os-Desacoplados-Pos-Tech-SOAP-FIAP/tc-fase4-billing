@@ -131,8 +131,10 @@ Corpo padronizado com `statusCode`, `error`, `message` (e `code` nos erros de ne
   prova a origem; o `data.id` da query string tem prioridade sobre o do corpo. O status do pagamento **sempre** vem da
   consulta `GET /v1/payments/:id` na API do Mercado Pago, nunca do corpo. Processamento idempotente pelo status da
   cobrança (o Mercado Pago reenvia notificações); pagamento inexistente ou notificação de outro tópico é ignorado com 200.
-- **E-mail simulado:** o envio vira log estruturado (`E-mail enviado (simulado)`, com o link). Sai depois do commit e é
-  best effort: falha vira log, nunca desfaz o efeito. Trocar por SES é implementar `INotificador`.
+- **E-mail ao cliente:** por padrão o envio vira log estruturado (`E-mail enviado (simulado)`, com o link); com
+  `NOTIFICADOR=ses` vai pelo Amazon SES (ver [E-mail (SES sandbox)](#e-mail-ses-sandbox)). Sai depois do commit e é
+  best effort: falha vira log, nunca desfaz o efeito nem leva a mensagem à DLQ. Avisos: orçamento enviado e cancelado,
+  cobrança gerada (com o link), pagamento confirmado (veículo liberado) e pagamento recusado (novo link a caminho).
 - **Pagamento depois de recusa:** um `approved` que chegue depois de uma recusa no mesmo link confirma a cobrança.
   Se a OS já tiver outra cobrança paga, confirma mesmo assim e loga erro para estorno manual.
 - **Valor pago menor:** pagamento aprovado com valor (em centavos) menor que a cobrança não confirma; fica registrado
@@ -166,6 +168,32 @@ curl -X POST http://localhost:3004/api/billing/dev/pagamentos/<osId>/simular \
 ```
 
 Os pagamentos simulados vivem na memória do processo: simule na mesma réplica que gerou a cobrança.
+
+## E-mail (SES sandbox)
+
+O padrão é `NOTIFICADOR=console` (local, CI e testes): o e-mail só aparece no log. Com `NOTIFICADOR=ses` o envio
+usa o Amazon SES (API v2, texto simples), na região de `AWS_REGION`, com as credenciais da role IRSA no EKS.
+
+| Variável | Quando | Descrição |
+|---|---|---|
+| `NOTIFICADOR` | sempre (padrão `console`) | `console` ou `ses` |
+| `SES_REMETENTE` | com `ses` (obrigatória no boot) | Endereço remetente, já verificado no SES |
+
+No EKS, as duas vêm das variáveis de repositório `NOTIFICADOR` e `SES_REMETENTE` (Settings → Secrets and variables →
+Actions → Variables); com `ses` e sem remetente o CD falha antes do build. Nenhum endereço real fica no Git.
+
+**Verificar as identidades (uma vez, fora do Terraform):** o remetente e, no sandbox, cada destinatário de teste.
+O Terraform não cria identidades porque o `destroy` de cada ensaio as apagaria e exigiria reverificar.
+
+```bash
+AWS_PROFILE=hailton-aws aws sesv2 create-email-identity --region us-east-1 --email-identity <email>
+# clique no link de verificação que chega nesse endereço; confira com:
+AWS_PROFILE=hailton-aws aws sesv2 get-email-identity --region us-east-1 --email-identity <email>
+```
+
+**Limites do sandbox:** só envia para endereços verificados (o e-mail do cliente na OS precisa ser um deles) e no
+máximo 200 mensagens por dia (1 por segundo). Envio para endereço não verificado falha no SES, vira log de erro e o
+fluxo segue normalmente. A role IRSA do billing tem só `ses:SendEmail` em `identity/*` da conta.
 
 ## Rodando localmente
 
@@ -208,6 +236,8 @@ e simule o pagamento com a rota acima.
 | `MP_WEBHOOK_SECRET` | com `mercadopago` | — | Assinatura secreta do webhook |
 | `MP_NOTIFICATION_URL` | com `mercadopago` | — | URL do webhook enviada em cada preferência |
 | `MP_API_URL` | não | `https://api.mercadopago.com` | Base da API do Mercado Pago |
+| `NOTIFICADOR` | não | `console` | `console` (log) ou `ses` (Amazon SES) |
+| `SES_REMETENTE` | com `ses` | — | Remetente verificado no SES |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | não | — | Observabilidade (vazio = desligado) |
 | `OTEL_SERVICE_NAME` | não | `tc-fase4-billing` | Nome do serviço nos traces |
 
@@ -223,8 +253,8 @@ A validação roda no boot e falha com a lista de variáveis ausentes ou inváli
 | `npm run test:cov` | Todos os projetos com cobertura; limite global mínimo de 80% nas quatro métricas |
 
 Integração e e2e rodam no banco `billing_test` do Postgres do compose (`docker compose up -d`); as migrações são
-aplicadas no `globalSetup`. Cobertura atual (`npm run test:cov`, 48 suítes, 241 testes): **99,3% de linhas**,
-99,0% de statements, 94,3% de branches e 99,2% de funções.
+aplicadas no `globalSetup`. Cobertura atual (`npm run test:cov`, 53 suítes, 282 testes): **99,4% de linhas**,
+99,1% de statements, 94,3% de branches e 99,2% de funções.
 
 Qualidade: `npm run lint:ci` (sem warnings) e `npm run build`.
 
@@ -262,7 +292,7 @@ pública (`public_base_url`) e a URL do webhook (`mercadopago_webhook_url`) do A
 | Segredos do Mercado Pago, **sem valor** (gravado à mão) | `oficina-fase4/billing/MP_ACCESS_TOKEN`, `oficina-fase4/billing/MP_WEBHOOK_SECRET` |
 | Fila FIFO de entrada + DLQ (redrive após 3 recebimentos) | `oficina-billing-inbox.fifo`, `oficina-billing-inbox-dlq.fifo` |
 | Tópico FIFO de eventos | `oficina-billing-events.fifo` |
-| Role IRSA do pod (consome a inbox, publica no tópico) | `oficina-fase4-billing` |
+| Role IRSA do pod (consome a inbox, publica no tópico, envia e-mail pelo SES) | `oficina-fase4-billing` |
 
 Configuração de estudo: sem backup, sem snapshot final e sem proteção contra exclusão. A
 assinatura do tópico é feita pelo OS, que é quem consome os eventos.
@@ -305,11 +335,12 @@ ele reinicia o Deployment para os pods lerem o ConfigMap e o Secret novos.
 
 1. Usa o SHA que passou no CI; pula com aviso se o cluster `oficina-fase4` não está
    `ACTIVE` ou se o Terraform do billing não foi aplicado (state sem outputs).
-2. Confere `PAYMENT_PROVIDER` e, no modo `mercadopago`, se os segredos têm valor.
+2. Confere `PAYMENT_PROVIDER` e, no modo `mercadopago`, se os segredos têm valor; confere `NOTIFICADOR` e, no modo
+   `ses`, se `SES_REMETENTE` está definido.
 3. Publica a imagem no ECR com tag = SHA (reaproveita se a tag já existe).
 4. Cria o Secret `billing-secret` (`DATABASE_URL`, `JWT_SECRET` e, no modo `mercadopago`,
    `MP_ACCESS_TOKEN` e `MP_WEBHOOK_SECRET`, lidos do Secrets Manager) e o ConfigMap
-   `billing-config` (`PAYMENT_PROVIDER`, `INBOX_QUEUE_URL`, `EVENTS_TOPIC_ARN`,
+   `billing-config` (`PAYMENT_PROVIDER`, `NOTIFICADOR`, `SES_REMETENTE`, `INBOX_QUEUE_URL`, `EVENTS_TOPIC_ARN`,
    `PUBLIC_BASE_URL`, `MP_NOTIFICATION_URL`, fixas e, se o Alloy estiver instalado,
    `OTEL_EXPORTER_OTLP_ENDPOINT`).
 5. Aplica `k8s/base` com a imagem do ECR, a role IRSA e o SG do ALB; o initContainer
