@@ -108,8 +108,13 @@ jobs:
       - name: Provedor de pagamento e segredos do Mercado Pago
         if: steps.state.outputs.ready == 'true'
         # Falha antes do build: provedor inválido ou, no modo mercadopago, segredo sem
-        # valor (o Terraform cria os segredos vazios; o valor é gravado à mão). Só confere
+        # valor. O Terraform cria os segredos vazios (o valor nunca passa pelo state); se os
+        # secrets MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET existirem no repositório, este passo
+        # grava os valores no Secrets Manager, senão vale o que foi gravado à mão. Só confere
         # que há valor: a leitura para o Secret do Kubernetes é no passo do Secret.
+        env:
+          MP_ACCESS_TOKEN_GITHUB: ${{ secrets.MP_ACCESS_TOKEN }}
+          MP_WEBHOOK_SECRET_GITHUB: ${{ secrets.MP_WEBHOOK_SECRET }}
         run: |
           case "$PAYMENT_PROVIDER" in
             fake)
@@ -123,6 +128,14 @@ jobs:
               ;;
           esac
 
+          grava_do_github() {
+            [ -n "$2" ] || return 0
+            aws secretsmanager put-secret-value --secret-id "$1" --secret-string "$2" --output text --query VersionId > /dev/null
+            echo "Segredo $1 gravado a partir do secret do repositório."
+          }
+          grava_do_github "$MP_ACCESS_TOKEN_SECRET" "$MP_ACCESS_TOKEN_GITHUB"
+          grava_do_github "$MP_WEBHOOK_SECRET_SECRET" "$MP_WEBHOOK_SECRET_GITHUB"
+
           FALTANDO=0
           for SEGREDO in "$MP_ACCESS_TOKEN_SECRET" "$MP_WEBHOOK_SECRET_SECRET"; do
             VALOR=$(aws secretsmanager get-secret-value --secret-id "$SEGREDO" --query SecretString --output text 2>/dev/null) || VALOR=""
@@ -130,7 +143,7 @@ jobs:
               echo "::add-mask::$VALOR"
               continue
             fi
-            echo "::error::Segredo $SEGREDO sem valor. Grave antes do deploy: aws secretsmanager put-secret-value --secret-id $SEGREDO --secret-string '<valor>' --region $AWS_REGION"
+            echo "::error::Segredo $SEGREDO sem valor. Cadastre os secrets MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET no repositório (gh secret set) ou grave à mão: aws secretsmanager put-secret-value --secret-id $SEGREDO --secret-string '<valor>' --region $AWS_REGION"
             FALTANDO=1
           done
           exit "$FALTANDO"
