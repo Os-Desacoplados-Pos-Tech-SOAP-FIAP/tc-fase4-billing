@@ -318,8 +318,17 @@ variables → Actions → Variables). Sem ela, vale `fake` e o CD emite um warni
 - **`mercadopago`**: o CD lê `MP_ACCESS_TOKEN` e `MP_WEBHOOK_SECRET` do Secrets Manager e
   falha antes do build, com o comando a rodar, se algum estiver sem valor.
 
-O Terraform cria os dois segredos vazios: o valor nunca passa pelo state nem pelo Git. Depois
-de cada `apply` (o `destroy` apaga os segredos na hora), grave os valores:
+O Terraform cria os dois segredos vazios: o valor nunca passa pelo state nem pelo Git. O
+`destroy` apaga os segredos na hora, então o valor precisa ser gravado de novo a cada subida.
+O jeito recomendado é cadastrar uma vez os secrets do repositório; com eles, o CD grava os
+valores no Secrets Manager sozinho, antes do build:
+
+```bash
+gh secret set MP_ACCESS_TOKEN   -R Os-Desacoplados-Pos-Tech-SOAP-FIAP/tc-fase4-billing   # cola o Access Token de teste
+gh secret set MP_WEBHOOK_SECRET -R Os-Desacoplados-Pos-Tech-SOAP-FIAP/tc-fase4-billing   # cola a assinatura secreta do webhook
+```
+
+Sem os secrets do repositório, grave à mão depois de cada `apply`:
 
 ```bash
 aws secretsmanager put-secret-value --region us-east-1 \
