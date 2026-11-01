@@ -4,6 +4,8 @@ import { Test } from '@nestjs/testing';
 
 import { INJECTION_TOKENS } from '../common/constants/injection-tokens';
 import { InfrastructureModule } from './infrastructure.module';
+import { ConsoleNotificador } from './notificacao/console-notificador';
+import { SesNotificador } from './notificacao/ses-notificador';
 import { FakePaymentGateway } from './payment/fake-payment.gateway';
 import { MercadoPagoGateway } from './payment/mercado-pago.gateway';
 
@@ -34,6 +36,29 @@ describe('InfrastructureModule', () => {
     expect(modulo.get(INJECTION_TOKENS.PAYMENT_GATEWAY)).toBe(
       modulo.get(INJECTION_TOKENS.SIMULADOR_PAGAMENTO),
     );
+  });
+
+  it('usa o notificador de console por padrão', async () => {
+    const modulo = await compilar();
+    expect(modulo.get(INJECTION_TOKENS.NOTIFICADOR)).toBeInstanceOf(ConsoleNotificador);
+  });
+
+  it('usa o SES quando NOTIFICADOR=ses', async () => {
+    const anterior = {
+      NOTIFICADOR: process.env.NOTIFICADOR,
+      SES_REMETENTE: process.env.SES_REMETENTE,
+    };
+    process.env.NOTIFICADOR = 'ses';
+    process.env.SES_REMETENTE = 'oficina@example.com';
+    try {
+      const modulo = await compilar();
+      expect(modulo.get(INJECTION_TOKENS.NOTIFICADOR)).toBeInstanceOf(SesNotificador);
+    } finally {
+      for (const [chave, valor] of Object.entries(anterior)) {
+        if (valor === undefined) delete process.env[chave];
+        else process.env[chave] = valor;
+      }
+    }
   });
 
   it('usa o Mercado Pago quando PAYMENT_PROVIDER=mercadopago', async () => {

@@ -9,6 +9,7 @@ const OBRIGATORIAS_MERCADO_PAGO = [
 /** Acima de 2^31-1 ms o setInterval cai para 1 ms; 1 dia é teto folgado. */
 const INTERVALO_EXPIRACAO_MAXIMO_MS = 86_400_000;
 const PROVEDORES = ['fake', 'mercadopago'];
+const NOTIFICADORES = ['console', 'ses'];
 
 function exigirAusentes(config: Record<string, unknown>, chaves: string[]): void {
   const ausentes = chaves.filter((chave) => !config[chave]);
@@ -48,6 +49,12 @@ export function validarAmbiente(config: Record<string, unknown>): Record<string,
     throw new Error(`PAYMENT_PROVIDER deve ser um de: ${PROVEDORES.join(', ')}`);
   }
   if (provedor === 'mercadopago') exigirAusentes(config, OBRIGATORIAS_MERCADO_PAGO);
+
+  const notificador = (config.NOTIFICADOR as string | undefined) || 'console';
+  if (!NOTIFICADORES.includes(notificador)) {
+    throw new Error(`NOTIFICADOR deve ser um de: ${NOTIFICADORES.join(', ')}`);
+  }
+  if (notificador === 'ses') exigirAusentes(config, ['SES_REMETENTE']);
 
   exigirInteiro(config, 'ORCAMENTO_VALIDADE_HORAS', 1);
   exigirInteiro(config, 'ORCAMENTO_EXPIRACAO_INTERVALO_MS', 0, INTERVALO_EXPIRACAO_MAXIMO_MS);

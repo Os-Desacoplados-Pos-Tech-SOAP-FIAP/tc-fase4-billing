@@ -1,7 +1,8 @@
 import { Logger } from '@nestjs/common';
 
-import { Cenario, criarCenario, OS } from '../../../../test/fakes/cenario';
+import { Cenario, criarCenario, OS, payloadOrcamento } from '../../../../test/fakes/cenario';
 import { Cobranca, StatusCobranca } from '../../../domain/cobranca/entities/Cobranca';
+import { Orcamento } from '../../../domain/orcamento/entities/Orcamento';
 import { UniqueID } from '../../../domain/shared/UniqueID';
 import { BILLING_EVENTS } from '../../billing-messages';
 import { ProcessarNotificacaoPagamentoUseCase } from './ProcessarNotificacaoPagamentoUseCase';
@@ -25,6 +26,16 @@ describe('ProcessarNotificacaoPagamentoUseCase', () => {
       c.pagamentos,
       c.outbox,
       c.gateway,
+      c.orcamentos,
+      c.notificador,
+    );
+    await c.orcamentos.salvar(
+      Orcamento.criar({
+        osId: OS,
+        ...payloadOrcamento(),
+        validoAte: new Date('2026-10-22T10:00:00Z'),
+        tokenHash: 'h',
+      }),
     );
     const cobranca = Cobranca.criar(
       {
@@ -208,5 +219,67 @@ describe('ProcessarNotificacaoPagamentoUseCase', () => {
   it('outros erros do gateway continuam propagando', async () => {
     jest.spyOn(c.gateway, 'consultarPagamento').mockRejectedValueOnce(new Error('mp fora'));
     await expect(useCase.execute('mp-1')).rejects.toThrow('mp fora');
+  });
+
+  describe('e-mail ao cliente', () => {
+    it('aprovado avisa o cliente do orçamento com o valor pago', async () => {
+      c.gateway.pagar('mp-1', { referenciaExterna: cobrancaId, valor: 165.5 });
+      await useCase.execute('mp-1');
+      expect(c.notificador.emails).toHaveLength(1);
+      expect(c.notificador.emails[0]).toMatchObject({
+        para: 'maria@example.com',
+        assunto: expect.stringContaining('#42'),
+      });
+      expect(c.notificador.emails[0].assunto).toContain('confirmado');
+      expect(c.notificador.emails[0].corpo).toMatch(/R\$\s165,50/);
+    });
+
+    it('recusado avisa a recusa e o novo link', async () => {
+      c.gateway.pagar('mp-1', { referenciaExterna: cobrancaId, valor: 165.5, status: 'rejected' });
+      await useCase.execute('mp-1');
+      expect(c.notificador.emails).toHaveLength(1);
+      expect(c.notificador.emails[0].para).toBe('maria@example.com');
+      expect(c.notificador.emails[0].assunto).toContain('recusado');
+      expect(c.notificador.emails[0].corpo).toContain('novo link de pagamento');
+    });
+
+    it('pendente, valor menor, notificação repetida e recusa ignorada não enviam e-mail', async () => {
+      const pagar = (id: string, valor: number, status = 'approved') =>
+        c.gateway.pagar(id, { referenciaExterna: cobrancaId, valor, status });
+      pagar('mp-1', 165.5, 'in_process');
+      pagar('mp-2', 1);
+      pagar('mp-3', 165.5);
+      pagar('mp-4', 165.5, 'rejected');
+      for (const id of ['mp-1', 'mp-2', 'mp-3', 'mp-3', 'mp-4']) {
+        await useCase.execute(id);
+      }
+      expect(c.notificador.emails).toHaveLength(1);
+      expect(c.notificador.emails[0].assunto).toContain('confirmado');
+    });
+
+    it('falha no envio vira log e não desfaz a confirmação', async () => {
+      c.notificador.falhar = true;
+      c.gateway.pagar('mp-1', { referenciaExterna: cobrancaId, valor: 165.5 });
+      await expect(useCase.execute('mp-1')).resolves.toBeUndefined();
+      expect(await statusAtual()).toBe(StatusCobranca.PAGA);
+      expect(c.outbox.tipos()).toEqual([BILLING_EVENTS.PAGAMENTO_CONFIRMADO]);
+      expect(loggerError).toHaveBeenCalledWith(
+        expect.objectContaining({ msg: 'Falha ao enviar e-mail ao cliente', osId: OS }),
+      );
+    });
+
+    it('sem orçamento da OS confirma sem e-mail e avisa no log', async () => {
+      jest.spyOn(c.orcamentos, 'buscarPorOs').mockResolvedValue(null);
+      c.gateway.pagar('mp-1', { referenciaExterna: cobrancaId, valor: 165.5 });
+      await useCase.execute('mp-1');
+      expect(await statusAtual()).toBe(StatusCobranca.PAGA);
+      expect(c.notificador.emails).toHaveLength(0);
+      expect(loggerWarn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          msg: 'Orçamento da OS não encontrado; e-mail não enviado',
+          osId: OS,
+        }),
+      );
+    });
   });
 });

@@ -16,6 +16,7 @@ Fora do Git, criados pelo CD a cada deploy:
 
 - **ConfigMap `billing-config`**: `NODE_ENV`, `PORT`, `AWS_REGION`, `MESSAGING_ENABLED`,
   `OTEL_SERVICE_NAME`, `PAYMENT_PROVIDER` (variável de repositório, padrão `fake`),
+  `NOTIFICADOR` e `SES_REMETENTE` (variáveis de repositório, padrão `console`),
   `INBOX_QUEUE_URL`, `EVENTS_TOPIC_ARN`, `PUBLIC_BASE_URL`, `MP_NOTIFICATION_URL` (outputs
   do Terraform) e `OTEL_EXPORTER_OTLP_ENDPOINT` quando o Alloy está instalado.
 - **Secret `billing-secret`**: `DATABASE_URL` e `JWT_SECRET`, lidos do Secrets Manager; com

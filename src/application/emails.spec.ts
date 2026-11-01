@@ -1,7 +1,13 @@
 import { UniqueID } from '../domain/shared/UniqueID';
 import { Cobranca } from '../domain/cobranca/entities/Cobranca';
 import { Orcamento, TipoItemOrcamento } from '../domain/orcamento/entities/Orcamento';
-import { emailCobrancaGerada, emailOrcamentoCancelado, emailOrcamentoEnviado } from './emails';
+import {
+  emailCobrancaGerada,
+  emailOrcamentoCancelado,
+  emailOrcamentoEnviado,
+  emailPagamentoAprovado,
+  emailPagamentoRecusado,
+} from './emails';
 
 const orcamento = Orcamento.criar({
   osId: '7f2b2a8e-1d7c-4a35-9c1e-0a4f3b2c1d10',
@@ -54,5 +60,24 @@ describe('e-mails ao cliente', () => {
     const email = emailCobrancaGerada(orcamento, cobranca);
     expect(email.assunto).toContain('#42');
     expect(email.corpo).toContain('https://mp.test/checkout/1');
+  });
+
+  it('pagamento aprovado traz OS, valor pago e libera a retirada do veículo', () => {
+    const email = emailPagamentoAprovado(orcamento, 165.5);
+    expect(email.para).toBe('maria@example.com');
+    expect(email.assunto).toContain('#42');
+    expect(email.assunto).toContain('confirmado');
+    expect(email.corpo).toContain('Maria');
+    expect(email.corpo).toMatch(/R\$\s165,50/);
+    expect(email.corpo).toContain('retirado');
+  });
+
+  it('pagamento recusado avisa que um novo link será enviado', () => {
+    const email = emailPagamentoRecusado(orcamento);
+    expect(email.para).toBe('maria@example.com');
+    expect(email.assunto).toContain('#42');
+    expect(email.assunto).toContain('recusado');
+    expect(email.corpo).toContain('recusado');
+    expect(email.corpo).toContain('novo link de pagamento');
   });
 });

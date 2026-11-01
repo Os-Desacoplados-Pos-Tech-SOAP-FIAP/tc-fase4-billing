@@ -73,6 +73,10 @@ describe('Cobrança e pagamento (e2e)', () => {
       .send({ aprovado: false })
       .expect(200);
     expect(recusa.body.status).toBe('RECUSADA');
+    expect(emails.at(-1)).toMatchObject({
+      para: 'maria@example.com',
+      assunto: 'Pagamento da OS #42 recusado',
+    });
 
     await gerarCobranca();
     const aprovacao = await http()
@@ -81,6 +85,10 @@ describe('Cobrança e pagamento (e2e)', () => {
       .send({ aprovado: true })
       .expect(200);
     expect(aprovacao.body.status).toBe('PAGA');
+    expect(emails.at(-1)).toMatchObject({
+      para: 'maria@example.com',
+      assunto: 'Pagamento da OS #42 confirmado',
+    });
 
     expect((await cobrancas()).map((c: { status: string }) => c.status)).toEqual(['RECUSADA', 'PAGA']);
     expect(await tiposNaOutbox(prisma)).toEqual([

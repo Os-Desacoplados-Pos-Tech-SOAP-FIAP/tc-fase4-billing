@@ -26,6 +26,8 @@ describe('SimularPagamentoUseCase', () => {
       c.pagamentos,
       c.outbox,
       c.gateway,
+      c.orcamentos,
+      c.notificador,
     );
     useCase = new SimularPagamentoUseCase(c.cobrancas, simulador, processar);
   });
