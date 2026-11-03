@@ -28,6 +28,16 @@ describe('SesNotificador', () => {
     });
   });
 
+  it('com html, envia as duas versões (o cliente de e-mail escolhe)', async () => {
+    ses.on(SendEmailCommand).resolves({ MessageId: 'm-2' });
+    await notificador.enviar({ ...email, html: '<p>oi</p>' });
+
+    expect(ses.commandCalls(SendEmailCommand)[0].args[0].input.Content?.Simple?.Body).toEqual({
+      Text: { Data: 'linha 1\nlinha 2', Charset: 'UTF-8' },
+      Html: { Data: '<p>oi</p>', Charset: 'UTF-8' },
+    });
+  });
+
   it('propaga a falha do SES (quem chama transforma em log)', async () => {
     ses.on(SendEmailCommand).rejects(new Error('Email address is not verified'));
     await expect(notificador.enviar(email)).rejects.toThrow('Email address is not verified');

@@ -9,23 +9,58 @@ const dataHora = new Intl.DateTimeFormat('pt-BR', {
   timeStyle: 'short',
 });
 
-export function emailOrcamentoEnviado(orcamento: Orcamento, link: string): Email {
+const ENTIDADES_HTML: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+function escaparHtml(texto: string): string {
+  return texto.replace(/[&<>"']/g, (caractere) => ENTIDADES_HTML[caractere]);
+}
+
+/** Linhas de texto viram parágrafos HTML escapados (linhas vazias são descartadas). */
+function paragrafos(linhas: string[]): string[] {
+  return linhas.filter(Boolean).map((linha) => `<p>${escaparHtml(linha)}</p>`);
+}
+
+/**
+ * Link com texto curto: filtros como o Safe Links do Outlook reescrevem a URL do e-mail de
+ * texto e a deixam ilegível; no HTML o cliente vê só o texto.
+ */
+function linkHtml(url: string, texto: string): string {
+  return `<a href="${escaparHtml(url)}">${escaparHtml(texto)}</a>`;
+}
+
+export function emailOrcamentoEnviado(orcamento: Orcamento, link: string, token: string): Email {
   const itens = orcamento.itens.map(
     (item) => `- ${item.descricao} (${item.quantidade} x ${moeda.format(item.valorUnitario)})`,
   );
+  const resumo = [
+    `Olá ${orcamento.cliente.nome},`,
+    '',
+    'Seu orçamento está pronto:',
+    ...itens,
+    '',
+    `Total: ${moeda.format(orcamento.valorTotal)}`,
+    `Válido até: ${dataHora.format(orcamento.validoAte)}`,
+  ];
+  const codigo = 'Para aprovar ou reprovar, use o código de aprovação (uso único):';
   return {
     para: orcamento.cliente.email,
     assunto: `Orçamento da OS #${orcamento.numeroOs} disponível para aprovação`,
     corpo: [
-      `Olá ${orcamento.cliente.nome},`,
+      ...resumo,
       '',
-      'Seu orçamento está pronto:',
-      ...itens,
-      '',
-      `Total: ${moeda.format(orcamento.valorTotal)}`,
-      `Válido até: ${dataHora.format(orcamento.validoAte)}`,
-      '',
-      `Aprove ou reprove pelo link (uso único): ${link}`,
+      `Veja o orçamento pelo link: ${link}`,
+      `${codigo} ${token}`,
+    ].join('\n'),
+    html: [
+      ...paragrafos(resumo),
+      `<p>${linkHtml(link, 'Ver orçamento')}</p>`,
+      `<p>${codigo} <code>${escaparHtml(token)}</code></p>`,
     ].join('\n'),
   };
 }
@@ -44,15 +79,18 @@ export function emailOrcamentoCancelado(orcamento: Orcamento, motivo?: string): 
 }
 
 export function emailCobrancaGerada(orcamento: Orcamento, cobranca: Cobranca): Email {
+  const resumo = [
+    `Olá ${orcamento.cliente.nome},`,
+    '',
+    `O serviço foi concluído. Valor: ${moeda.format(cobranca.valor)}`,
+  ];
   return {
     para: orcamento.cliente.email,
     assunto: `Pagamento da OS #${orcamento.numeroOs}`,
-    corpo: [
-      `Olá ${orcamento.cliente.nome},`,
-      '',
-      `O serviço foi concluído. Valor: ${moeda.format(cobranca.valor)}`,
-      `Pague pelo link: ${cobranca.initPoint}`,
-    ].join('\n'),
+    corpo: [...resumo, `Pague pelo link: ${cobranca.initPoint}`].join('\n'),
+    html: [...paragrafos(resumo), `<p>${linkHtml(cobranca.initPoint, 'Pagar agora')}</p>`].join(
+      '\n',
+    ),
   };
 }
 

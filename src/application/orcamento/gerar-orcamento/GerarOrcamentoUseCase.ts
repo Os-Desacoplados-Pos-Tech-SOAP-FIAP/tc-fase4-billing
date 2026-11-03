@@ -85,6 +85,7 @@ export class GerarOrcamentoUseCase {
     return emailOrcamentoEnviado(
       orcamento,
       linkDeAprovacao(this.config.urlPublica, orcamento.numeroOs, token),
+      token,
     );
   }
 
