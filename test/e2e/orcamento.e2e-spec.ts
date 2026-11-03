@@ -168,6 +168,41 @@ describe('Orçamento (e2e)', () => {
     await http().get(`/api/billing/orcamentos/${OS}`).set('Authorization', atendente).expect(404);
   });
 
+  it('navegador recebe a página e decide pelos botões (formulário)', async () => {
+    await gerar();
+    const t = tokenDoUltimoEmail(emails);
+
+    const pagina = await http().get(`${publico}?token=${t}`).set('Accept', 'text/html').expect(200);
+    expect(pagina.headers['content-type']).toContain('text/html');
+    expect(pagina.headers['cache-control']).toBe('no-store');
+    expect(pagina.text).toContain('Orçamento da OS #42');
+    expect(pagina.text).toContain('<form method="post" action="42/decisao">');
+
+    await http()
+      .get(`${publico}?token=errado`)
+      .set('Accept', 'text/html')
+      .expect(404)
+      .expect('Content-Type', /text\/html/);
+
+    const decisao = await http()
+      .post(`${publico}/decisao`)
+      .type('form')
+      .send({ token: t, decisao: 'APROVADA' })
+      .expect(200);
+    expect(decisao.text).toContain('Orçamento aprovado');
+    expect((await tiposNaOutbox(prisma)).at(-1)).toBe(BILLING_EVENTS.ORCAMENTO_APROVADO);
+
+    const repetida = await http()
+      .post(`${publico}/decisao`)
+      .type('form')
+      .send({ token: t, decisao: 'REPROVADA' })
+      .expect(422);
+    expect(repetida.text).toContain('está APROVADO');
+
+    const depois = await http().get(`${publico}?token=${t}`).set('Accept', 'text/html').expect(200);
+    expect(depois.text).not.toContain('<form');
+  });
+
   it('link público ignora parâmetros extras e rejeita token ausente ou duplicado', async () => {
     await gerar();
     const t = tokenDoUltimoEmail(emails);
